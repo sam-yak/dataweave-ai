@@ -8,6 +8,7 @@ import re
 import math
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, EmailStr
 from supabase import create_client
 from core.orchestrator import Orchestrator
 
@@ -37,6 +38,38 @@ def sanitize_for_json(obj):
     elif isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
         return None
     return obj
+
+
+# ── Waitlist Endpoint ─────────────────────────────────────────
+
+class WaitlistRequest(BaseModel):
+    email: str
+
+
+@router.post("/waitlist")
+async def join_waitlist(request: WaitlistRequest):
+    """Add an email to the waitlist."""
+    email = request.email.strip().lower()
+
+    # Basic email validation
+    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', email):
+        raise HTTPException(status_code=400, detail="Invalid email address")
+
+    # Check if already on waitlist
+    existing = supabase.table("waitlist").select("id").eq("email", email).execute()
+    if existing.data:
+        return {"status": "already_registered", "message": "You're already on the list!"}
+
+    # Insert
+    supabase.table("waitlist").insert({"email": email}).execute()
+    return {"status": "success", "message": "You're on the list!"}
+
+
+@router.get("/waitlist/count")
+async def waitlist_count():
+    """Get the current waitlist count."""
+    result = supabase.table("waitlist").select("id", count="exact").execute()
+    return {"count": result.count}
 
 
 # ── Schema Endpoints ─────────────────────────────────────────

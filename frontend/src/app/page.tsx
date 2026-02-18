@@ -120,9 +120,19 @@ export default function Home() {
     e.preventDefault();
     if (!email) return;
     setLoading(true);
-    // TODO: POST to /api/waitlist when backend endpoint exists
-    await new Promise((r) => setTimeout(r, 800));
-    setSubmitted(true);
+    try {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://dataweave-ai-production-8516.up.railway.app";
+      const res = await fetch(`${API_URL}/api/waitlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      if (res.ok) {
+        setSubmitted(true);
+      }
+    } catch (err) {
+      console.error("Waitlist error:", err);
+    }
     setLoading(false);
   };
 
