@@ -372,7 +372,7 @@ Open [http://localhost:3000](http://localhost:3000)
 
 **Samyak Agarwal** — [LinkedIn](https://linkedin.com/in/sam-agarwal-ai/)
 
-Built in 2 weeks. $320 total budget. Zero external funding.
+
 
 ---
 
