@@ -527,7 +527,15 @@ export default function Home() {
             </span>
           </div>
           <p className="text-xs text-white/25">
-            © 2026 DataWeave AI. All rights reserved.
+            Built with <span className="text-[#E94560]">♥</span> by{" "}
+            <a
+              href="https://linkedin.com/in/sam-agarwal-ai/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white/50 hover:text-white transition-colors underline underline-offset-2"
+            >
+              Samyak
+            </a>
           </p>
         </div>
       </footer>
