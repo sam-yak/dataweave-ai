@@ -47,19 +47,19 @@ Upload messy file → AI maps columns → Human reviews → Download clean data
 DataWeave's intelligence is split across five specialized agents. Each handles a single responsibility. **Three of the five agents cost $0.00 to run.**
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        DataWeave Pipeline                          │
-│                                                                     │
-│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐
-│  │ Ingestion│──▶│ Pattern  │──▶│  Schema  │──▶│Transform │──▶│Validation│
-│  │  Agent   │   │  Agent   │   │  Agent   │   │  Agent   │   │  Agent   │
-│  │          │   │          │   │          │   │          │   │          │
-│  │ NO LLM   │   │ NO LLM   │   │ LLM for  │   │ NO LLM   │   │ NO LLM   │
-│  │ $0.00    │   │ $0.00    │   │ unknowns │   │ $0.00    │   │ $0.00    │
-│  └──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘
-│                                                                     │
-│  Total cost per file: ~$0.01 (and decreasing as patterns learn)    │
-└─────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│                        DataWeave Pipeline                                  │
+│                                                                            │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐  │ 
+│  │ Ingestion│──▶│ Pattern  │──▶│  Schema  │──▶│Transform │──▶│Validation│  │ 
+│  │  Agent   │   │  Agent   │   │  Agent   │   │  Agent   │   │  Agent   │  │ 
+│  │          │   │          │   │          │   │          │   │          │  │ 
+│  │ NO LLM   │   │ NO LLM   │   │ LLM for  │   │ NO LLM   │   │ NO LLM   │  │ 
+│  │ $0.00    │   │ $0.00    │   │ unknowns │   │ $0.00    │   │ $0.00    │  │ 
+│  └──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘  │ 
+│                                                                            │
+│  Total cost per file: ~$0.01 (and decreasing as patterns learn)            │
+└────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Agent 1: Ingestion Agent `NO LLM`
