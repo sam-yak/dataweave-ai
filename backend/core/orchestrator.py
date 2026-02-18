@@ -40,6 +40,11 @@ class Orchestrator:
         # This gets cleared when the job completes or the server restarts
         self._dataframes: dict[str, pd.DataFrame] = {}
 
+        # In-memory store for completed exports
+        # Key: job_id, Value: CSV string
+        # Persists after job completes so user can download later
+        self._exports: dict[str, str] = {}
+
     # ── Phase 1: Upload → Ingest → Map → Await Review ───────
 
     def start_pipeline(self, file_bytes: bytes, filename: str, target_schema_id: str) -> dict:
@@ -267,7 +272,10 @@ class Orchestrator:
         # Convert transformed data to exportable formats
         export_data = self._prepare_export(transformed_df)
 
-        # Clean up in-memory DataFrame
+        # Cache the CSV export for later download
+        self._exports[job_id] = export_data["csv"]
+
+        # Clean up in-memory DataFrame (no longer needed)
         del self._dataframes[job_id]
 
         return {
@@ -291,16 +299,33 @@ class Orchestrator:
 
     def _prepare_export(self, df: pd.DataFrame) -> dict:
         """Prepare transformed data for export in multiple formats."""
+        # Replace all NaN/NaT with None for JSON compatibility
+        clean_df = df.copy()
+        clean_df = clean_df.astype(object)
+        clean_df = clean_df.where(clean_df.notna(), None)
+
         # CSV string
         csv_buffer = io.StringIO()
         df.to_csv(csv_buffer, index=False)
         csv_string = csv_buffer.getvalue()
 
-        # JSON array
-        json_records = df.where(df.notna(), None).to_dict(orient="records")
+        # JSON array — convert to Python native types
+        json_records = []
+        for _, row in clean_df.iterrows():
+            record = {}
+            for col in clean_df.columns:
+                val = row[col]
+                # Force Python native types (not numpy)
+                if val is None:
+                    record[col] = None
+                elif isinstance(val, (int, float, bool, str)):
+                    record[col] = val
+                else:
+                    record[col] = str(val)
+            json_records.append(record)
 
         # Preview (first 5 rows)
-        preview = df.head(5).where(df.head(5).notna(), None).to_dict(orient="records")
+        preview = json_records[:5]
 
         return {
             "csv": csv_string,
