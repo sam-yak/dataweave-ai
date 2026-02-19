@@ -378,4 +378,4 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+Source Available License. Free for personal and educational use. Commercial use requires written permission. See [LICENSE](LICENSE) for details.
