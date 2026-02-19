@@ -167,6 +167,7 @@ export default function Home() {
         <div className="hidden md:flex items-center gap-8 text-sm text-white/50">
           <a href="#how-it-works" className="hover:text-white transition-colors">How it works</a>
           <a href="#agents" className="hover:text-white transition-colors">Agents</a>
+          <a href="/upload" className="hover:text-white transition-colors">Upload</a>
           <a
             href="#waitlist"
             className="px-4 py-2 bg-[#E94560] hover:bg-[#E94560]/80 rounded-lg text-white text-sm font-medium transition-colors"
@@ -209,10 +210,10 @@ export default function Home() {
           <FadeIn delay={300}>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <a
-                href="#waitlist"
+                href="/upload"
                 className="group px-8 py-3.5 bg-[#E94560] hover:bg-[#D63B55] rounded-xl text-white font-semibold transition-all duration-300 hover:shadow-[0_0_40px_rgba(233,69,96,0.3)]"
               >
-                Get Early Access
+                Try It Now
                 <span className="inline-block ml-2 group-hover:translate-x-1 transition-transform">→</span>
               </a>
               <a
