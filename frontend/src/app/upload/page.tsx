@@ -11,29 +11,49 @@ interface Schema {
   id: string;
   name: string;
   description: string;
+  is_custom?: boolean;
 }
 
 export default function UploadPage() {
   const router = useRouter();
   const [schemas, setSchemas] = useState<Schema[]>([]);
+  const [customSchemas, setCustomSchemas] = useState<Schema[]>([]);
   const [selectedSchema, setSelectedSchema] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState("");
+  const [schemaTab, setSchemaTab] = useState<"system" | "custom">("system");
 
   // Fetch available schemas on mount
   useEffect(() => {
     fetch(`${API_URL}/api/schemas`)
       .then((res) => res.json())
       .then((data) => {
-        setSchemas(data.schemas || []);
-        if (data.schemas?.length > 0) {
-          setSelectedSchema(data.schemas[0].id);
+        const all = data.schemas || [];
+        // Separate system vs custom
+        const system = all.filter((s: Schema) => !s.is_custom);
+        const custom = all.filter((s: Schema) => s.is_custom);
+        setSchemas(system);
+        setCustomSchemas(custom);
+        if (system.length > 0) {
+          setSelectedSchema(system[0].id);
         }
       })
       .catch(() => setError("Could not connect to the API. Please try again later."));
+
+    // Also try the dedicated custom schemas endpoint (has field counts)
+    fetch(`${API_URL}/api/schemas/custom`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.schemas?.length > 0) {
+          setCustomSchemas(data.schemas);
+        }
+      })
+      .catch(() => {
+        // Custom schemas endpoint might not exist yet — that's fine
+      });
   }, []);
 
   // Drag and drop handlers
@@ -118,6 +138,9 @@ export default function UploadPage() {
     return (bytes / (1024 * 1024)).toFixed(1) + " MB";
   };
 
+  // Which schemas to show based on active tab
+  const activeSchemas = schemaTab === "system" ? schemas : customSchemas;
+
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white">
       {/* Nav */}
@@ -148,8 +171,39 @@ export default function UploadPage() {
           <label className="block text-sm font-medium text-white/60 mb-2">
             Target Schema
           </label>
+
+          {/* ── v2: Schema type tabs ── */}
+          <div className="flex items-center gap-1 mb-3 p-1 bg-white/[0.03] border border-white/[0.06] rounded-lg w-fit">
+            <button
+              onClick={() => setSchemaTab("system")}
+              className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all ${
+                schemaTab === "system"
+                  ? "bg-white/[0.1] text-white"
+                  : "text-white/40 hover:text-white/60"
+              }`}
+            >
+              Built-in
+            </button>
+            <button
+              onClick={() => setSchemaTab("custom")}
+              className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${
+                schemaTab === "custom"
+                  ? "bg-white/[0.1] text-white"
+                  : "text-white/40 hover:text-white/60"
+              }`}
+            >
+              My Schemas
+              {customSchemas.length > 0 && (
+                <span className="text-[10px] bg-[#E94560]/20 text-[#E94560] px-1.5 py-0.5 rounded-full">
+                  {customSchemas.length}
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* Schema cards — same grid layout as original */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {schemas.map((schema) => (
+            {activeSchemas.map((schema) => (
               <button
                 key={schema.id}
                 onClick={() => setSelectedSchema(schema.id)}
@@ -163,8 +217,33 @@ export default function UploadPage() {
                 <div className="text-xs text-white/35 line-clamp-2">{schema.description}</div>
               </button>
             ))}
+
+            {/* ── v2: "Create New" card (only in My Schemas tab) ── */}
+            {schemaTab === "custom" && (
+              <a
+                href="/schemas/new"
+                className="p-4 rounded-xl border-2 border-dashed border-white/[0.08] hover:border-[#E94560]/30 hover:bg-[#E94560]/5 text-center transition-all duration-200 flex flex-col items-center justify-center gap-1"
+              >
+                <div className="text-xl text-white/20">+</div>
+                <div className="text-xs text-white/35">Create New</div>
+              </a>
+            )}
           </div>
-          {schemas.length === 0 && !error && (
+
+          {/* Empty state for custom schemas */}
+          {schemaTab === "custom" && customSchemas.length === 0 && (
+            <div className="mt-3 text-center py-4">
+              <p className="text-xs text-white/25 mb-2">No custom schemas yet.</p>
+              <a
+                href="/schemas/new"
+                className="text-xs text-[#E94560] hover:text-[#FF6B6B] transition-colors"
+              >
+                Create your first schema →
+              </a>
+            </div>
+          )}
+
+          {schemaTab === "system" && schemas.length === 0 && !error && (
             <div className="text-sm text-white/30 mt-2">Loading schemas...</div>
           )}
         </div>
