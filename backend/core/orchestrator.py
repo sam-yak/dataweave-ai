@@ -7,6 +7,10 @@ TRANSFORMING → VALIDATING → COMPLETE
 
 The orchestrator holds the DataFrame in memory and passes it
 between agents. Only metadata goes to the database.
+
+v2: Handles 1-to-N (split) mappings. When a split_name or split_address
+    mapping is approved, the orchestrator marks the secondary target fields
+    as "covered" so the validation agent doesn't flag them as unmapped.
 """
 
 import os
@@ -20,6 +24,19 @@ from agents.schema import SchemaAgent
 from agents.pattern import PatternAgent
 from agents.transform import TransformAgent
 from agents.validation import ValidationAgent
+
+
+# Which target fields each split transform produces
+SPLIT_TRANSFORM_OUTPUTS = {
+    "split_name": {
+        "primary": "first_name",
+        "produces": ["first_name", "last_name"],
+    },
+    "split_address": {
+        "primary": "address",
+        "produces": ["address", "city", "state", "zip_code"],
+    },
+}
 
 
 class Orchestrator:
@@ -132,6 +149,9 @@ class Orchestrator:
             llm_count = sum(1 for m in mappings if m["agent_source"] == "schema")
             mapped_count = sum(1 for m in mappings if m["target_field"] is not None)
 
+            # v2: Count split transforms
+            split_count = sum(1 for m in mappings if m.get("transform_type") in SPLIT_TRANSFORM_OUTPUTS)
+
             return {
                 "job_id": job_id,
                 "status": "awaiting_review",
@@ -142,6 +162,7 @@ class Orchestrator:
                     "unmapped": len(mappings) - mapped_count,
                     "pattern_agent_resolved": pattern_count,
                     "llm_resolved": llm_count,
+                    "split_transforms": split_count,   # v2
                 },
                 "mappings": [
                     {
@@ -169,7 +190,7 @@ class Orchestrator:
         """
         Run Phase 2 of the pipeline (after human review):
         1. Fetch approved mappings
-        2. Transform data
+        2. Transform data (including split transforms)
         3. Validate results
         4. Return quality report + transformed data
 
@@ -225,11 +246,22 @@ class Orchestrator:
 
         active_mappings = [m for m in mappings if m["status"] in ("approved", "corrected", "proposed")]
 
+        # v2: Build transform config for split mappings
+        # The transform_config tells split_name/split_address which field names to use
+        active_mappings = self._enrich_split_configs(active_mappings, target_schema)
+
         # ── Stage 3: Transform ──
         try:
             self._update_status(job_id, "transforming")
-            self._log(job_id, "transform", "started",
-                     f"Applying {len(active_mappings)} mappings...")
+
+            # v2: Log split transforms specifically
+            split_count = sum(1 for m in active_mappings if m.get("transform_type") in SPLIT_TRANSFORM_OUTPUTS)
+            if split_count > 0:
+                self._log(job_id, "transform", "started",
+                         f"Applying {len(active_mappings)} mappings ({split_count} split transforms)...")
+            else:
+                self._log(job_id, "transform", "started",
+                         f"Applying {len(active_mappings)} mappings...")
 
             transformed_df = self.transform_agent.process(df, active_mappings, target_schema)
 
@@ -296,6 +328,77 @@ class Orchestrator:
             "mappings_applied": len(active_mappings),
             "mappings_rejected": len(rejected),
         }
+
+    # ── v2: Enrich split transform configs ───────────────────
+
+    def _enrich_split_configs(self, mappings: list[dict], target_schema: dict) -> list[dict]:
+        """
+        For split mappings, build the transform_config that tells the
+        Transform Agent which field names to output.
+
+        Example: if the target schema has "firstname" and "lastname" (HubSpot style)
+        instead of "first_name" and "last_name", the config needs to reflect that.
+        """
+        schema_json = target_schema.get("schema_json", target_schema)
+        if isinstance(schema_json, str):
+            schema_json = json.loads(schema_json)
+
+        schema_field_names = {f["name"] for f in schema_json.get("fields", [])}
+
+        enriched = []
+        for m in mappings:
+            m = dict(m)  # copy so we don't mutate the original
+
+            transform_type = m.get("transform_type")
+            if transform_type == "split_name":
+                # Find the actual first/last name fields in the target schema
+                first_field = self._find_field_like(schema_field_names, [
+                    "first_name", "firstname", "fname", "given_name", "givenname"
+                ])
+                last_field = self._find_field_like(schema_field_names, [
+                    "last_name", "lastname", "lname", "surname", "family_name", "familyname"
+                ])
+
+                m["transform_config"] = {
+                    "first_name_field": first_field or "first_name",
+                    "last_name_field": last_field or "last_name",
+                }
+
+            elif transform_type == "split_address":
+                street_field = self._find_field_like(schema_field_names, [
+                    "address", "street", "address_line1", "addressline1", "street_address"
+                ])
+                city_field = self._find_field_like(schema_field_names, [
+                    "city", "address_city", "town"
+                ])
+                state_field = self._find_field_like(schema_field_names, [
+                    "state", "address_state", "province", "state_province"
+                ])
+                zip_field = self._find_field_like(schema_field_names, [
+                    "zip_code", "zipcode", "zip", "postal_code", "postalcode",
+                    "address_postal_code"
+                ])
+
+                m["transform_config"] = {
+                    "street_field": street_field or "address",
+                    "city_field": city_field or "city",
+                    "state_field": state_field or "state",
+                    "zip_field": zip_field or "zip_code",
+                }
+
+            enriched.append(m)
+
+        return enriched
+
+    @staticmethod
+    def _find_field_like(schema_fields: set, candidates: list[str]) -> Optional[str]:
+        """Find the first candidate that exists in the schema fields."""
+        for candidate in candidates:
+            if candidate in schema_fields:
+                return candidate
+        return None
+
+    # ── Export ────────────────────────────────────────────────
 
     def _prepare_export(self, df: pd.DataFrame) -> dict:
         """Prepare transformed data for export in multiple formats."""

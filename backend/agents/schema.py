@@ -7,6 +7,10 @@ then sends unknown columns to the LLM Router.
 Blends heuristic confidence with LLM confidence for final scores.
 
 LLM Usage: Only for columns not found in Pattern Agent cache
+
+v2: Handles split transform proposals from the LLM (split_name, split_address).
+    When a split transform is proposed, the agent stores it as a single mapping
+    with transform_type set. The orchestrator + transform agent handle the rest.
 """
 
 import os
@@ -15,6 +19,10 @@ from typing import Tuple
 from agents.pattern import PatternAgent
 from core.llm_router import LLMRouter
 from supabase import create_client
+
+
+# Split transforms that produce multiple output fields
+SPLIT_TRANSFORMS = {"split_name", "split_address"}
 
 
 class SchemaAgent:
@@ -144,21 +152,29 @@ class SchemaAgent:
 
                 # Blend LLM confidence with heuristic boosts
                 raw_confidence = llm_result.get("confidence", 0)
+                target_field = llm_result.get("target_field")
+                transform_type = llm_result.get("transform_type")
+
                 boosted_confidence = self._apply_heuristic_boosts(
-                    raw_confidence, col_info, llm_result.get("target_field"), schema_json
+                    raw_confidence, col_info, target_field, schema_json
                 )
+
+                # v2: Build reasoning that mentions split transforms
+                reasoning = llm_result.get("reasoning", "Mapped by Schema Agent via LLM")
+                if transform_type in SPLIT_TRANSFORMS:
+                    reasoning = f"[Split] {reasoning}"
 
                 mapping = {
                     "job_id": job_id,
                     "column_id": col_record["id"],
                     "source_name": col_info["name"],
-                    "target_field": llm_result.get("target_field"),
+                    "target_field": target_field,
                     "confidence": boosted_confidence,
-                    "transform_type": llm_result.get("transform_type"),
+                    "transform_type": transform_type,
                     "transform_config": {},
                     "status": "proposed",
                     "agent_source": "schema",
-                    "reasoning": llm_result.get("reasoning", "Mapped by Schema Agent via LLM"),
+                    "reasoning": reasoning,
                 }
                 all_mappings.append(mapping)
 
@@ -171,16 +187,24 @@ class SchemaAgent:
         llm_count = len(needs_llm)
         total = len(all_mappings)
         mapped_count = sum(1 for m in all_mappings if m["target_field"] is not None)
+        split_count = sum(1 for m in all_mappings if m.get("transform_type") in SPLIT_TRANSFORMS)
+
+        summary_msg = (
+            f"Mapped {mapped_count}/{total} columns. "
+            f"Pattern Agent resolved {pattern_count}, LLM resolved {llm_count}."
+        )
+        if split_count > 0:
+            summary_msg += f" {split_count} split transform(s) proposed."
 
         self._log_event(
             job_id, "schema", "completed",
-            f"Mapped {mapped_count}/{total} columns. "
-            f"Pattern Agent resolved {pattern_count}, LLM resolved {llm_count}.",
+            summary_msg,
             metadata={
                 "pattern_matches": pattern_count,
                 "llm_matches": llm_count,
                 "total_mapped": mapped_count,
                 "total_columns": total,
+                "split_transforms": split_count,
                 "llm_stats": self.llm_router.get_stats(),
             }
         )

@@ -8,7 +8,8 @@ Routes mapping requests to the cheapest effective option:
 
 Also handles response caching to avoid paying for the same mapping twice.
 
-Cost tracking is built in — every call logs tokens and estimated cost.
+v2: Updated prompt to support split transforms (split_name, split_address)
+    and new transforms (currency_normalize, zip_pad).
 """
 
 import os
@@ -148,9 +149,14 @@ RULES:
 5. If a transformation is needed (e.g., date format conversion, type casting), specify the transform_type.
 6. Do NOT map multiple source columns to the same target field unless absolutely necessary.
 
+CRITICAL — SPLIT TRANSFORMS:
+7. If a source column contains FULL NAMES (e.g., "John Doe", "Jane Smith") and the target schema has separate first_name and last_name fields, you MUST use "split_name" as the transform_type. Set target_field to "first_name" (the primary target). The transform agent will automatically produce both first_name and last_name from the split.
+8. If a source column contains FULL ADDRESSES (e.g., "123 Main St, Springfield, IL 62704") and the target schema has separate address, city, state, zip_code fields, use "split_address" as the transform_type. Set target_field to "address" (the primary target).
+9. When you propose a split transform, do NOT also create separate mappings for the secondary output fields (e.g., don't create a separate mapping for last_name if you already proposed split_name on the Name column — the split handles it).
+
 TRANSFORM TYPES (use when needed):
 - "cast_integer" — convert string to integer
-- "cast_float" — convert string to float  
+- "cast_float" — convert string to float
 - "parse_date" — parse various date formats to ISO 8601
 - "cast_boolean" — convert yes/no, true/false, 1/0 to boolean
 - "lowercase" — convert to lowercase
@@ -158,11 +164,15 @@ TRANSFORM TYPES (use when needed):
 - "titlecase" — convert to title case
 - "phone_normalize" — normalize phone number format
 - "email_normalize" — lowercase and trim email
+- "currency_normalize" — strip currency symbols/commas, convert to number (e.g., "$1,234.56" → 1234.56)
+- "zip_pad" — pad zip codes to 5 digits (e.g., "2134" → "02134")
+- "split_name" — split full name into first_name + last_name (1-to-2 mapping)
+- "split_address" — split full address into address, city, state, zip_code (1-to-4 mapping)
 - null — no transformation needed
 
 Respond with ONLY a JSON array, no other text. Each element must have:
 - "source": the exact source column name
-- "target_field": the target field name (or null if no match)
+- "target_field": the target field name (or null if no match). For split transforms, use the PRIMARY target field (e.g., "first_name" for split_name, "address" for split_address).
 - "confidence": integer 0-99
 - "transform_type": string or null
 - "reasoning": one sentence explaining the mapping decision
@@ -170,6 +180,9 @@ Respond with ONLY a JSON array, no other text. Each element must have:
 Example response:
 [
   {{"source": "Cust Email", "target_field": "email", "confidence": 92, "transform_type": "email_normalize", "reasoning": "Column contains email addresses matching the email field"}},
+  {{"source": "Full Name", "target_field": "first_name", "confidence": 88, "transform_type": "split_name", "reasoning": "Column contains full names that need splitting into first_name and last_name"}},
+  {{"source": "Price", "target_field": "amount", "confidence": 85, "transform_type": "currency_normalize", "reasoning": "Column contains currency values like $1,234.56 that need normalization"}},
+  {{"source": "Zipcode", "target_field": "zip_code", "confidence": 90, "transform_type": "zip_pad", "reasoning": "Column contains zip codes that may need zero-padding to 5 digits"}},
   {{"source": "Random ID", "target_field": null, "confidence": 0, "transform_type": null, "reasoning": "No matching field in target schema"}}
 ]"""
 
