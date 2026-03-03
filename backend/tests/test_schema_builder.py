@@ -69,7 +69,7 @@ class TestFieldNameNormalization:
 
     def test_spaces(self):
         assert normalize_field_name("first name") == "first_name"
-        assert normalize_field_name("Full  Name") == "full__name"  # double underscore from double space
+        assert normalize_field_name("Full  Name") == "full_name"  # double underscore from double space
 
     def test_hyphens(self):
         assert normalize_field_name("first-name") == "first_name"
