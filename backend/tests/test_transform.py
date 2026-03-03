@@ -234,15 +234,15 @@ class TestExistingTransforms:
         assert result.iloc[0] == 1234
         assert result.iloc[1] == 500
         assert result.iloc[2] == 42
-        assert result.iloc[3] is None
-        assert result.iloc[4] is None
+        assert pd.isna(result.iloc[3])
+        assert pd.isna(result.iloc[4])
 
     def test_cast_float(self, agent):
         series = pd.Series(["1,234.56", "$500", None])
         result = agent._cast_float(series, {})
         assert result.iloc[0] == 1234.56
         assert result.iloc[1] == 500.0
-        assert result.iloc[2] is None
+        assert pd.isna(result.iloc[2])
 
     def test_parse_date(self, agent):
         series = pd.Series(["2024-01-15", "01/20/2024", "Jan 25, 2024", None, "garbage"])
@@ -250,7 +250,7 @@ class TestExistingTransforms:
         assert result.iloc[0] == "2024-01-15"
         assert result.iloc[1] == "2024-01-20"
         assert result.iloc[2] == "2024-01-25"
-        assert result.iloc[3] is None
+        assert pd.isna(result.iloc[3])
 
     def test_cast_boolean(self, agent):
         series = pd.Series(["yes", "no", "true", "false", "1", "0", None, "maybe"])
@@ -268,8 +268,8 @@ class TestExistingTransforms:
         series = pd.Series(["  John@Test.COM  ", "invalid", None])
         result = agent._email_normalize(series, {})
         assert result.iloc[0] == "john@test.com"
-        assert result.iloc[1] is None
-        assert result.iloc[2] is None
+        assert pd.isna(result.iloc[1])
+        assert pd.isna(result.iloc[2])
 
     def test_phone_normalize(self, agent):
         series = pd.Series(["(555) 123-4567", "+44 20 7946 0958"])
