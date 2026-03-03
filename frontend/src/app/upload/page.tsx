@@ -107,8 +107,6 @@ export default function UploadPage() {
       formData.append("file", file);
       formData.append("target_schema_id", selectedSchema);
 
-      setProgress("Running AI pipeline...");
-
       const res = await fetch(`${API_URL}/api/upload`, {
         method: "POST",
         body: formData,
@@ -121,9 +119,15 @@ export default function UploadPage() {
 
       const data = await res.json();
 
-      // Store the result in sessionStorage for the review page
-      sessionStorage.setItem("pipeline_result", JSON.stringify(data));
-      router.push(`/review/${data.job_id}`);
+      // v2/P6: Redirect to processing page which polls for status
+      // The pipeline now runs async in the background
+      if (data.status === "processing") {
+        router.push(`/processing/${data.job_id}`);
+      } else {
+        // Fallback: if the server still returns synchronously (old API)
+        sessionStorage.setItem("pipeline_result", JSON.stringify(data));
+        router.push(`/review/${data.job_id}`);
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Upload failed. Please try again.";
       setError(message);

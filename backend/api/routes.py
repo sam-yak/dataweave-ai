@@ -6,11 +6,12 @@ Full pipeline with Orchestrator + all 5 agents
 import os
 import re
 import math
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, EmailStr
 from supabase import create_client
 from core.orchestrator import Orchestrator
+from core.job_manager import job_manager
 
 router = APIRouter()
 
@@ -99,11 +100,13 @@ async def get_schema(schema_id: str):
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    target_schema_id: str = Form(...)
+    target_schema_id: str = Form(...),
+    background_tasks: BackgroundTasks = BackgroundTasks(),
 ):
     """
-    Phase 1: Upload file → Ingest → Map columns.
-    Returns mapping proposals for human review.
+    v2: Async upload — returns immediately with a job_id.
+    The pipeline runs in the background. Poll GET /api/jobs/{job_id}/status
+    to track progress.
     """
     file_bytes = await file.read()
     if len(file_bytes) > MAX_FILE_SIZE:
@@ -112,14 +115,98 @@ async def upload_file(
     if not file.filename:
         raise HTTPException(status_code=400, detail="Filename is required")
 
-    try:
-        result = orchestrator.start_pipeline(file_bytes, file.filename, target_schema_id)
-        return sanitize_for_json(result)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Pipeline failed: {str(e)}")
+    allowed_extensions = {".csv", ".xlsx", ".xls", ".json", ".tsv"}
+    ext = ("." + file.filename.rsplit(".", 1)[-1].lower()) if "." in file.filename else ""
+    if ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(allowed_extensions)}"
+        )
 
+    # Create job record in DB first (so frontend can reference immediately)
+    job_result = supabase.table("jobs").insert({
+        "status": "uploaded",
+        "original_filename": file.filename,
+        "file_type": ext.lstrip("."),
+        "file_size_bytes": len(file_bytes),
+        "target_schema_id": target_schema_id,
+    }).execute()
+
+    job_id = job_result.data[0]["id"]
+
+    # Register in job manager for in-memory progress polling
+    job_manager.create(job_id)
+    job_manager.update(job_id, "uploading", "File received, starting pipeline...")
+
+    # Store filename for background closure
+    filename = file.filename
+
+    def run_pipeline_background():
+        try:
+            result = orchestrator.start_pipeline_async(
+                file_bytes, filename, target_schema_id, job_id
+            )
+            job_manager.set_complete(job_id, sanitize_for_json(result))
+        except Exception as e:
+            job_manager.set_error(job_id, str(e))
+
+    background_tasks.add_task(run_pipeline_background)
+
+    return {
+        "job_id": job_id,
+        "status": "processing",
+        "message": "Pipeline started. Poll GET /api/jobs/{job_id}/status for progress.",
+    }
+
+
+# ── Job Status Polling (v2) ─────────────────────────────────
+
+@router.get("/jobs/{job_id}/status")
+async def job_status(job_id: str):
+    """
+    Poll this endpoint for real-time pipeline progress.
+    Returns stage name, progress %, and human-readable message.
+    """
+    # Check in-memory job manager first (fast, no DB hit)
+    status = job_manager.get(job_id)
+    if status:
+        return status
+
+    # Fallback: check database (for jobs from before a server restart)
+    result = supabase.table("jobs").select("id, status, error_message").eq("id", job_id).execute()
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    job = result.data[0]
+    return {
+        "job_id": job["id"],
+        "stage": job["status"],
+        "message": job.get("error_message") or f"Status: {job['status']}",
+        "progress": 100 if job["status"] == "complete" else -1,
+        "elapsed_seconds": None,
+        "error": job.get("error_message"),
+        "has_result": job["status"] in ("complete", "awaiting_review"),
+    }
+
+
+@router.get("/jobs/{job_id}/result")
+async def job_result(job_id: str):
+    """
+    Fetch the full pipeline result for a completed job.
+    Available after job reaches 'awaiting_review' or 'complete'.
+    """
+    result = job_manager.get_result(job_id)
+    if result:
+        return sanitize_for_json(result)
+
+    raise HTTPException(
+        status_code=404,
+        detail="Result not found. The job may still be processing, or the server "
+               "may have restarted. Check /api/jobs/{job_id}/status first."
+    )
+
+
+# ── Complete Pipeline (Phase 2) ──────────────────────────────
 
 @router.post("/jobs/{job_id}/complete")
 async def complete_pipeline(job_id: str):

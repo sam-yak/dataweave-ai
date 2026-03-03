@@ -24,6 +24,7 @@ from agents.schema import SchemaAgent
 from agents.pattern import PatternAgent
 from agents.transform import TransformAgent
 from agents.validation import ValidationAgent
+from core.job_manager import job_manager
 
 
 # Which target fields each split transform produces
@@ -93,6 +94,9 @@ class Orchestrator:
 
         self._log(job_id, "orchestrator", "job_created", f"Pipeline started for {filename}")
 
+        # Track progress for async status polling
+        job_manager.update(job_id, "ingesting", "Parsing and profiling your file...")
+
         # ── Stage 1: Ingestion ──
         try:
             self._update_status(job_id, "ingesting")
@@ -131,18 +135,21 @@ class Orchestrator:
         except Exception as e:
             self._update_status(job_id, "failed", str(e))
             self._log(job_id, "ingestion", "failed", str(e))
+            job_manager.set_error(job_id, str(e))
             raise
 
         # ── Stage 2: Schema Agent (Pattern + LLM mapping) ──
         try:
             self._update_status(job_id, "mapping")
             self._log(job_id, "schema", "started", "Mapping columns to target schema...")
+            job_manager.update(job_id, "mapping", "AI is mapping your columns to the target schema...")
 
             mappings = self.schema_agent.process(job_id, target_schema_id)
 
             self._update_status(job_id, "awaiting_review")
             self._log(job_id, "orchestrator", "awaiting_review",
                      "Mapping complete — awaiting human review")
+            job_manager.update(job_id, "awaiting_review", "Mapping complete — ready for your review")
 
             # Build response
             pattern_count = sum(1 for m in mappings if m["agent_source"] == "pattern")
@@ -182,6 +189,122 @@ class Orchestrator:
         except Exception as e:
             self._update_status(job_id, "failed", str(e))
             self._log(job_id, "schema", "failed", str(e))
+            job_manager.set_error(job_id, str(e))
+            raise
+
+    # ── Phase 1 (Async): Same as start_pipeline but with pre-created job ──
+
+    def start_pipeline_async(self, file_bytes: bytes, filename: str,
+                              target_schema_id: str, job_id: str) -> dict:
+        """
+        Async version of start_pipeline. Uses a pre-created job_id
+        (created by the upload endpoint before spawning this background task).
+        This avoids a race condition where the frontend tries to poll status
+        before the job record exists in the database.
+        """
+        # Validate target schema
+        schema_result = self.supabase.table("target_schemas").select("*").eq(
+            "id", target_schema_id).execute()
+        if not schema_result.data:
+            raise ValueError(f"Target schema {target_schema_id} not found")
+
+        self._log(job_id, "orchestrator", "job_created",
+                 f"Pipeline started for {filename}")
+
+        # Track progress
+        job_manager.update(job_id, "ingesting", "Parsing and profiling your file...")
+
+        # ── Stage 1: Ingestion ──
+        try:
+            self._update_status(job_id, "ingesting")
+            self._log(job_id, "ingestion", "started", "Parsing file...")
+
+            df, metadata = self.ingestion_agent.process(file_bytes, filename)
+
+            self._dataframes[job_id] = df
+
+            self.supabase.table("jobs").update({
+                "row_count": metadata["row_count"],
+                "column_count": metadata["column_count"],
+                "metadata": metadata,
+            }).eq("id", job_id).execute()
+
+            for col_info in metadata["columns"]:
+                normalized = PatternAgent.normalize(col_info["name"])
+                self.supabase.table("columns").insert({
+                    "job_id": job_id,
+                    "source_name": col_info["name"],
+                    "normalized_name": normalized,
+                    "detected_type": col_info["detected_type"],
+                    "sample_values": col_info["sample_values"],
+                    "null_count": col_info["null_count"],
+                    "total_count": col_info["total_count"],
+                    "unique_count": col_info["unique_count"],
+                    "profile_data": col_info,
+                }).execute()
+
+            self._log(job_id, "ingestion", "completed",
+                     f"Parsed {metadata['row_count']} rows, {metadata['column_count']} columns")
+
+        except Exception as e:
+            self._update_status(job_id, "failed", str(e))
+            self._log(job_id, "ingestion", "failed", str(e))
+            job_manager.set_error(job_id, str(e))
+            raise
+
+        # ── Stage 2: Schema Agent (Pattern + LLM mapping) ──
+        try:
+            self._update_status(job_id, "mapping")
+            self._log(job_id, "schema", "started", "Mapping columns to target schema...")
+            job_manager.update(job_id, "mapping",
+                             "AI is mapping your columns to the target schema...")
+
+            mappings = self.schema_agent.process(job_id, target_schema_id)
+
+            self._update_status(job_id, "awaiting_review")
+            self._log(job_id, "orchestrator", "awaiting_review",
+                     "Mapping complete — awaiting human review")
+            job_manager.update(job_id, "awaiting_review",
+                             "Mapping complete — ready for your review")
+
+            # Build response
+            pattern_count = sum(1 for m in mappings if m["agent_source"] == "pattern")
+            llm_count = sum(1 for m in mappings if m["agent_source"] == "schema")
+            mapped_count = sum(1 for m in mappings if m["target_field"] is not None)
+            split_count = sum(1 for m in mappings
+                            if m.get("transform_type") in SPLIT_TRANSFORM_OUTPUTS)
+
+            return {
+                "job_id": job_id,
+                "status": "awaiting_review",
+                "metadata": metadata,
+                "mapping_summary": {
+                    "total_columns": len(mappings),
+                    "mapped": mapped_count,
+                    "unmapped": len(mappings) - mapped_count,
+                    "pattern_agent_resolved": pattern_count,
+                    "llm_resolved": llm_count,
+                    "split_transforms": split_count,
+                },
+                "mappings": [
+                    {
+                        "id": m.get("id"),
+                        "source_name": m["source_name"],
+                        "target_field": m["target_field"],
+                        "confidence": m["confidence"],
+                        "agent_source": m["agent_source"],
+                        "reasoning": m.get("reasoning", ""),
+                        "transform_type": m.get("transform_type"),
+                        "status": m["status"],
+                    }
+                    for m in mappings
+                ],
+            }
+
+        except Exception as e:
+            self._update_status(job_id, "failed", str(e))
+            self._log(job_id, "schema", "failed", str(e))
+            job_manager.set_error(job_id, str(e))
             raise
 
     # ── Phase 2: Transform → Validate → Complete ────────────
@@ -253,6 +376,7 @@ class Orchestrator:
         # ── Stage 3: Transform ──
         try:
             self._update_status(job_id, "transforming")
+            job_manager.update(job_id, "transforming", "Applying transforms to your data...")
 
             # v2: Log split transforms specifically
             split_count = sum(1 for m in active_mappings if m.get("transform_type") in SPLIT_TRANSFORM_OUTPUTS)
@@ -271,12 +395,14 @@ class Orchestrator:
         except Exception as e:
             self._update_status(job_id, "failed", str(e))
             self._log(job_id, "transform", "failed", str(e))
+            job_manager.set_error(job_id, str(e))
             raise
 
         # ── Stage 4: Validation ──
         try:
             self._update_status(job_id, "validating")
             self._log(job_id, "validation", "started", "Running quality checks...")
+            job_manager.update(job_id, "validating", "Running quality checks on transformed data...")
 
             # v2/P3: Pass mappings so validator knows which fields have source data
             validation_report = self.validation_agent.process(
@@ -305,6 +431,7 @@ class Orchestrator:
         except Exception as e:
             self._update_status(job_id, "failed", str(e))
             self._log(job_id, "validation", "failed", str(e))
+            job_manager.set_error(job_id, str(e))
             raise
 
         # Convert transformed data to exportable formats
