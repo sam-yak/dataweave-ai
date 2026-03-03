@@ -5,6 +5,7 @@ DataWeave AI — Main application entry point
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from api.routes import router
+from api.schema_routes import schema_builder_router
 
 app = FastAPI(
     title="DataWeave AI",
@@ -27,6 +28,7 @@ app.add_middleware(
 )
 
 app.include_router(router, prefix="/api")
+app.include_router(schema_builder_router, prefix="/api")
 
 
 @app.get("/")

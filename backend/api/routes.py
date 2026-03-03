@@ -76,10 +76,14 @@ async def waitlist_count():
 
 @router.get("/schemas")
 async def list_schemas():
-    """List all available target schemas."""
-    result = supabase.table("target_schemas").select("id, name, description").execute()
+    """List all available target schemas (system + custom)."""
+    result = (supabase.table("target_schemas")
+              .select("id, name, description, is_custom")
+              .order("is_custom")  # System schemas first, then custom
+              .order("created_at", desc=True)
+              .execute()
+    )
     return {"schemas": result.data}
-
 
 @router.get("/schemas/{schema_id}")
 async def get_schema(schema_id: str):
