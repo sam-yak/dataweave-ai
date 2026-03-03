@@ -25,6 +25,15 @@ interface ValidationWarning {
   null_rate?: number;
 }
 
+interface ValidationInfo {
+  type: string;
+  field: string;
+  row: number | null;
+  message: string;
+  severity: string;
+  is_required?: boolean;
+}
+
 interface CompletionResult {
   job_id: string;
   status: string;
@@ -35,15 +44,19 @@ interface CompletionResult {
     rows_with_errors: number;
     total_errors: number;
     total_warnings: number;
+    total_info?: number;
     summary: {
       required_field_errors: number;
       type_errors: number;
       format_errors: number;
       duplicate_warnings: number;
       anomaly_warnings: number;
+      completeness_warnings?: number;
+      unmapped_fields?: number;
     };
     errors: ValidationError[];
     warnings: ValidationWarning[];
+    info?: ValidationInfo[];
   };
   export: {
     csv: string;
@@ -62,6 +75,7 @@ export default function ResultsPage() {
 
   const [result, setResult] = useState<CompletionResult | null>(null);
   const [showPreview, setShowPreview] = useState(true);
+  const [showInfo, setShowInfo] = useState(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("completion_result");
@@ -112,6 +126,8 @@ export default function ResultsPage() {
   }
 
   const report = result.validation_report;
+  const infoMessages = report.info || [];
+  const unmappedCount = report.summary?.unmapped_fields || 0;
 
   return (
     <div className="min-h-screen bg-[#0A0A0F] text-white">
@@ -144,6 +160,12 @@ export default function ResultsPage() {
           <p className="text-white/40">
             {report.clean_rows} of {report.total_rows} rows are clean
           </p>
+          {/* v2: Explain what the score means */}
+          {unmappedCount > 0 && (
+            <p className="text-white/25 text-xs mt-2">
+              {unmappedCount} schema field{unmappedCount > 1 ? "s" : ""} had no source data — this is expected and does not affect the score.
+            </p>
+          )}
         </div>
 
         {/* Stats row */}
@@ -248,6 +270,48 @@ export default function ResultsPage() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Info — collapsed by default */}
+        {infoMessages.length > 0 && (
+          <div className="mb-8">
+            <button
+              onClick={() => setShowInfo(!showInfo)}
+              className="flex items-center gap-2 text-lg font-semibold text-[#60A5FA] mb-4 hover:text-[#93C5FD] transition-colors"
+            >
+              Info ({infoMessages.length})
+              <span className={`text-sm transition-transform ${showInfo ? "rotate-180" : ""}`}>
+                ▾
+              </span>
+            </button>
+            {showInfo && (
+              <div className="space-y-2">
+                {infoMessages.map((info, i) => (
+                  <div
+                    key={i}
+                    className="bg-[#60A5FA]/[0.04] border border-[#60A5FA]/10 rounded-lg p-4"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono text-[#60A5FA] bg-[#60A5FA]/10 px-2 py-0.5 rounded">
+                        {info.type}
+                      </span>
+                      {info.is_required && (
+                        <span className="text-[10px] font-mono text-[#FBBF24] bg-[#FBBF24]/10 px-1.5 py-0.5 rounded">
+                          required in schema
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-white/50 mt-2">{info.message}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!showInfo && (
+              <p className="text-xs text-white/25">
+                These are schema fields with no source data. They don&apos;t affect your quality score.
+              </p>
+            )}
           </div>
         )}
 

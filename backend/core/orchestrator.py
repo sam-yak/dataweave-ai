@@ -278,7 +278,10 @@ class Orchestrator:
             self._update_status(job_id, "validating")
             self._log(job_id, "validation", "started", "Running quality checks...")
 
-            validation_report = self.validation_agent.process(transformed_df, target_schema)
+            # v2/P3: Pass mappings so validator knows which fields have source data
+            validation_report = self.validation_agent.process(
+                transformed_df, target_schema, mappings=active_mappings
+            )
 
             quality_score = validation_report["quality_score"]
 
@@ -288,11 +291,14 @@ class Orchestrator:
                 "quality_score": quality_score,
             }).eq("id", job_id).execute()
 
+            info_count = validation_report.get("total_info", 0)
+            info_msg = f", {info_count} info" if info_count > 0 else ""
+
             self._log(job_id, "validation", "completed",
                      f"Quality score: {quality_score}% — "
                      f"{validation_report['clean_rows']}/{validation_report['total_rows']} clean rows, "
                      f"{validation_report['total_errors']} errors, "
-                     f"{validation_report['total_warnings']} warnings")
+                     f"{validation_report['total_warnings']} warnings{info_msg}")
 
             self._log(job_id, "orchestrator", "complete", "Pipeline complete")
 
@@ -320,9 +326,11 @@ class Orchestrator:
                 "rows_with_errors": validation_report["rows_with_errors"],
                 "total_errors": validation_report["total_errors"],
                 "total_warnings": validation_report["total_warnings"],
+                "total_info": validation_report.get("total_info", 0),
                 "summary": validation_report["summary"],
                 "errors": validation_report["errors"][:50],  # Limit to first 50 for API response
                 "warnings": validation_report["warnings"][:20],
+                "info": validation_report.get("info", []),
             },
             "export": export_data,
             "mappings_applied": len(active_mappings),

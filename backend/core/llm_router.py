@@ -18,6 +18,7 @@ import hashlib
 from typing import Optional
 import anthropic
 import google.generativeai as genai
+from core.sanitizer import Sanitizer
 
 
 class LLMRouter:
@@ -63,19 +64,58 @@ class LLMRouter:
         if not unmapped_columns:
             return []
 
-        # Check cache first
-        cache_key = self._make_cache_key(unmapped_columns, target_schema)
+        # v2/P4: Sanitize all user-provided data before it enters the LLM prompt
+        sanitized_columns = []
+        injection_detected = False
+        for col in unmapped_columns:
+            raw_name = col.get("name", "")
+            if Sanitizer.is_suspicious(raw_name):
+                injection_detected = True
+                print(f"[SECURITY] Suspicious column name detected: {raw_name[:80]}")
+
+            # Check sample values for injection
+            raw_samples = col.get("sample_values", [])
+            for sample in raw_samples[:5]:
+                if sample and Sanitizer.is_suspicious(str(sample)):
+                    injection_detected = True
+                    print(f"[SECURITY] Suspicious sample value in column '{raw_name}': {str(sample)[:80]}")
+
+            sanitized_columns.append({
+                **col,
+                "name": Sanitizer.clean_column_name(raw_name),
+                "sample_values": Sanitizer.clean_sample_values(raw_samples),
+            })
+
+        if injection_detected:
+            print("[SECURITY] Prompt injection attempt detected in uploaded data. Input sanitized.")
+
+        # Check cache first (using sanitized data)
+        cache_key = self._make_cache_key(sanitized_columns, target_schema)
         if cache_key in self._cache:
             self.total_cache_hits += 1
             return self._cache[cache_key]
 
-        # Build the prompt
-        prompt = self._build_mapping_prompt(unmapped_columns, target_schema, already_mapped)
+        # Build the prompt (using sanitized data)
+        prompt = self._build_mapping_prompt(sanitized_columns, target_schema, already_mapped)
 
         # Try Claude first, fall back to Gemini
         result = self._call_claude(prompt)
         if result is None:
             result = self._call_gemini(prompt)
+
+        # v2/P4: Validate and sanitize LLM output
+        if result is not None:
+            result = Sanitizer.validate_llm_mapping_output(result)
+
+            # Restore original (unsanitized) source names in the result
+            # so downstream code can match them to actual DataFrame columns
+            original_names = {Sanitizer.clean_column_name(col["name"]): col["name"]
+                            for col in unmapped_columns}
+            for item in result:
+                sanitized_source = item.get("source", "")
+                if sanitized_source in original_names:
+                    item["source"] = original_names[sanitized_source]
+
         if result is None:
             # Both failed — return unmapped with zero confidence
             result = [
