@@ -147,7 +147,7 @@ export default function ReviewPage() {
 
         {/* Mapping cards */}
         <div className="space-y-3">
-          {mappings.map((mapping) => (
+          {mappings.map((mapping, index) => (
             <div
               key={mapping.id || `mapping-${index}`}
               className="rounded-xl p-5 transition-all duration-200"
