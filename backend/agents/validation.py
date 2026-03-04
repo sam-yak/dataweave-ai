@@ -80,8 +80,10 @@ class ValidationAgent:
         errors.extend(self._check_type_conformance(df, fields, mapped_fields))
         errors.extend(self._check_format_validation(df, field_lookup, mapped_fields))
         warnings.extend(self._check_duplicates(df, field_lookup))
-        warnings.extend(self._check_anomalies(df, field_lookup))
         warnings.extend(self._check_completeness(df, fields, mapped_fields))
+
+        # v2: Anomalies are info-level (not warnings) — they're unusual but not wrong
+        info.extend(self._check_anomalies(df, field_lookup))
 
         # v2: Generate info messages for unmapped schema fields
         info.extend(self._check_unmapped_fields(df, fields, mapped_fields))
@@ -113,8 +115,8 @@ class ValidationAgent:
                 "type_errors": sum(1 for e in errors if e["type"] == "type_conformance"),
                 "format_errors": sum(1 for e in errors if e["type"] == "format_validation"),
                 "duplicate_warnings": sum(1 for w in warnings if w["type"] == "duplicate"),
-                "anomaly_warnings": sum(1 for w in warnings if w["type"] == "anomaly"),
                 "completeness_warnings": sum(1 for w in warnings if w["type"] == "completeness"),
+                "anomaly_info": sum(1 for i in info if i["type"] == "anomaly"),
                 "unmapped_fields": sum(1 for i in info if i["type"] == "unmapped_field"),
             },
         }
@@ -322,8 +324,17 @@ class ValidationAgent:
     # ── Anomaly Detection ────────────────────────────────────
 
     def _check_anomalies(self, df: pd.DataFrame, field_lookup: dict) -> list[dict]:
-        """Detect statistical anomalies using IQR method for numeric fields."""
-        warnings = []
+        """
+        Detect statistical anomalies using IQR method for numeric fields.
+
+        v2.1 tuning:
+        - Uses 3×IQR (less aggressive than standard 1.5×)
+        - Skips field if >10% of values are outliers (just a wide distribution)
+        - Caps at 5 individual reports per field, then shows summary
+        - Returns info-level messages — anomalies are informational, not errors
+        """
+        info_messages = []
+        MAX_ANOMALIES_PER_FIELD = 5
 
         for field_name, field_spec in field_lookup.items():
             if field_spec.get("type") not in ("integer", "float"):
@@ -335,34 +346,56 @@ class ValidationAgent:
             numeric_col = pd.to_numeric(df[field_name], errors="coerce")
             non_null = numeric_col.dropna()
 
-            if len(non_null) < 10:
+            if len(non_null) < 30:
                 continue  # Not enough data for meaningful anomaly detection
 
-            # IQR method
+            # IQR method with 3× multiplier
             q1 = non_null.quantile(0.25)
             q3 = non_null.quantile(0.75)
             iqr = q3 - q1
 
             if iqr == 0:
-                continue  # All values are the same
+                continue  # All values are the same or very close
 
-            lower_bound = q1 - 1.5 * iqr
-            upper_bound = q3 + 1.5 * iqr
+            lower_bound = q1 - 3.0 * iqr
+            upper_bound = q3 + 3.0 * iqr
 
             outliers = non_null[(non_null < lower_bound) | (non_null > upper_bound)]
 
-            for idx, val in outliers.items():
-                warnings.append({
+            if len(outliers) == 0:
+                continue
+
+            # If more than 10% of values are "outliers", the distribution
+            # is just wide (e.g. sales amounts) — skip this field entirely
+            outlier_rate = len(outliers) / len(non_null)
+            if outlier_rate > 0.10:
+                continue
+
+            # Report compactly: individual items up to cap, then summary
+            if len(outliers) <= MAX_ANOMALIES_PER_FIELD:
+                for idx, val in outliers.items():
+                    info_messages.append({
+                        "type": "anomaly",
+                        "field": field_name,
+                        "row": int(idx),
+                        "value": float(val),
+                        "bounds": {"lower": float(lower_bound), "upper": float(upper_bound)},
+                        "message": f"Anomalous value {val} in '{field_name}' at row {int(idx) + 1} (expected {lower_bound:.1f}–{upper_bound:.1f})",
+                        "severity": "info",
+                    })
+            else:
+                # Too many to list individually — just show a summary
+                info_messages.append({
                     "type": "anomaly",
                     "field": field_name,
-                    "row": int(idx),
-                    "value": float(val),
+                    "row": None,
+                    "value": None,
                     "bounds": {"lower": float(lower_bound), "upper": float(upper_bound)},
-                    "message": f"Anomalous value {val} in '{field_name}' at row {int(idx) + 1} (expected {lower_bound:.1f}–{upper_bound:.1f})",
-                    "severity": "warning",
+                    "message": f"{len(outliers)} outlier values in '{field_name}' outside range {lower_bound:.1f}–{upper_bound:.1f}. Review large or unusual values in this column.",
+                    "severity": "info",
                 })
 
-        return warnings
+        return info_messages
 
     # ── Completeness Check ───────────────────────────────────
 
