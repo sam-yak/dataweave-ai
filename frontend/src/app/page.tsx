@@ -388,7 +388,7 @@ export default function Home() {
             ].map((item, i) => (
               <FadeIn key={i} delay={i * 150}>
                 <div
-                  className="relative rounded-2xl p-8 transition-all duration-500"
+                  className="relative rounded-2xl p-8 transition-all duration-500 h-full"
                   style={{
                     background: "var(--dw-bg-card)",
                     border: "1px solid var(--dw-border)",
