@@ -58,6 +58,10 @@ class Orchestrator:
         # This gets cleared when the job completes or the server restarts
         self._dataframes: dict[str, pd.DataFrame] = {}
 
+        # In-memory store for raw file bytes (for re-ingestion after server restart)
+        # Key: job_id, Value: (bytes, filename)
+        self._file_cache: dict[str, tuple[bytes, str]] = {}
+
         # In-memory store for completed exports
         # Key: job_id, Value: CSV string
         # Persists after job completes so user can download later
@@ -107,7 +111,8 @@ class Orchestrator:
             # Store DataFrame in memory for later stages
             self._dataframes[job_id] = df
 
-            # Save metadata to database
+            # Cache raw file bytes for re-ingestion if server restarts before Phase 2
+            self._file_cache[job_id] = (file_bytes, filename)
             self.supabase.table("jobs").update({
                 "row_count": metadata["row_count"],
                 "column_count": metadata["column_count"],
@@ -222,6 +227,7 @@ class Orchestrator:
             df, metadata = self.ingestion_agent.process(file_bytes, filename)
 
             self._dataframes[job_id] = df
+            self._file_cache[job_id] = (file_bytes, filename)
 
             self.supabase.table("jobs").update({
                 "row_count": metadata["row_count"],
@@ -330,10 +336,20 @@ class Orchestrator:
         # Get the DataFrame from memory
         df = self._dataframes.get(job_id)
         if df is None:
-            raise ValueError(
-                "DataFrame not found in memory. The file may need to be re-uploaded. "
-                "This happens if the server restarted between upload and review."
-            )
+            # Try re-ingesting from cached file bytes
+            cached = self._file_cache.get(job_id)
+            if cached:
+                file_bytes, filename = cached
+                self._log(job_id, "orchestrator", "re_ingesting",
+                         "DataFrame expired — re-parsing from cached file bytes...")
+                df, _ = self.ingestion_agent.process(file_bytes, filename)
+                self._dataframes[job_id] = df
+            else:
+                raise ValueError(
+                    "DataFrame not found in memory and no cached file bytes. "
+                    "The file needs to be re-uploaded. "
+                    "This happens if the server restarted between upload and review."
+                )
 
         # Get target schema
         schema = self.supabase.table("target_schemas").select("*").eq(
@@ -440,8 +456,9 @@ class Orchestrator:
         # Cache the CSV export for later download
         self._exports[job_id] = export_data["csv"]
 
-        # Clean up in-memory DataFrame (no longer needed)
-        del self._dataframes[job_id]
+        # Clean up in-memory DataFrame and file cache (no longer needed)
+        self._dataframes.pop(job_id, None)
+        self._file_cache.pop(job_id, None)
 
         return {
             "job_id": job_id,
