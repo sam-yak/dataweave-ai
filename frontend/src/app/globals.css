@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../styles/theme.css";
 
 @layer base {
   @font-face {
@@ -8,44 +9,37 @@
     font-display: swap;
     src: url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap');
   }
-
   * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
   }
-
   html {
     scroll-behavior: smooth;
   }
-
   body {
     font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-    background: #0A0A0F;
-    color: #ffffff;
+    background: var(--dw-bg-primary);
+    color: var(--dw-text-primary);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: background 0.3s ease, color 0.3s ease;
   }
-
   ::-webkit-scrollbar {
     width: 6px;
   }
-
   ::-webkit-scrollbar-track {
-    background: #0A0A0F;
+    background: var(--dw-bg-primary);
   }
-
   ::-webkit-scrollbar-thumb {
-    background: #333;
+    background: var(--dw-border-strong);
     border-radius: 3px;
   }
-
   ::-webkit-scrollbar-thumb:hover {
-    background: #555;
+    background: var(--dw-text-tertiary);
   }
-
   ::selection {
     background: rgba(233, 69, 96, 0.3);
-    color: #fff;
+    color: var(--dw-text-primary);
   }
 }
