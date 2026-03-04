@@ -39,6 +39,10 @@ const STAGES: Stage[] = [
 ];
 
 function getStageIndex(stage: string): number {
+  // "complete" means the async pipeline finished — same as awaiting_review for UI
+  if (stage === "complete" || stage === "awaiting_review") {
+    return STAGES.length - 1; // Last stage (Ready for Review)
+  }
   const idx = STAGES.findIndex((s) => s.key === stage);
   return idx >= 0 ? idx : 0;
 }
@@ -55,6 +59,7 @@ export default function ProcessingPage() {
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [dots, setDots] = useState("");
+  const [redirecting, setRedirecting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dotsRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -70,6 +75,8 @@ export default function ProcessingPage() {
 
   // Poll for status
   const pollStatus = useCallback(async () => {
+    if (redirecting) return; // Don't poll if already redirecting
+
     try {
       const res = await fetch(`${API_URL}/api/jobs/${jobId}/status`);
       if (!res.ok) return;
@@ -81,17 +88,24 @@ export default function ProcessingPage() {
       if (data.progress >= 0) setProgress(data.progress);
       if (data.elapsed_seconds) setElapsed(data.elapsed_seconds);
 
-      if (data.error) {
-        setError(data.error);
+      // Handle errors
+      if (data.stage === "failed" || data.error) {
+        setError(data.error || "Pipeline failed");
         if (pollRef.current) clearInterval(pollRef.current);
         return;
       }
 
-      // When awaiting_review, fetch result and redirect to review page
-      if (data.stage === "awaiting_review" && data.has_result) {
-        if (pollRef.current) clearInterval(pollRef.current);
+      // Pipeline done — redirect to review page
+      // Check BOTH "awaiting_review" and "complete" since the background
+      // task calls set_complete() which sets stage to "complete"
+      const isDone =
+        data.stage === "awaiting_review" || data.stage === "complete";
 
-        // Fetch the full result
+      if (isDone && data.has_result) {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setRedirecting(true);
+
+        // Fetch the full result and store for review page
         try {
           const resultRes = await fetch(
             `${API_URL}/api/jobs/${jobId}/result`
@@ -104,18 +118,18 @@ export default function ProcessingPage() {
             );
           }
         } catch {
-          // Result fetch failed — review page will handle it
+          // Result fetch failed — review page will handle it via API
         }
 
         // Short delay so user sees "Ready for Review" state
         setTimeout(() => {
           router.push(`/review/${jobId}`);
-        }, 1000);
+        }, 1200);
       }
     } catch {
       // Network error — keep polling, it might recover
     }
-  }, [jobId, router]);
+  }, [jobId, router, redirecting]);
 
   useEffect(() => {
     // Start polling immediately
@@ -176,12 +190,18 @@ export default function ProcessingPage() {
         {/* Header */}
         <div className="text-center mb-12">
           <h1 className="text-2xl font-bold mb-2">
-            {error ? "Pipeline Failed" : "Processing Your Data"}
+            {error
+              ? "Pipeline Failed"
+              : redirecting
+              ? "Ready for Review!"
+              : "Processing Your Data"}
           </h1>
           <p className="text-white/40 text-sm">
             {error
               ? "Something went wrong during processing."
-              : "Our AI agents are working on your file. This usually takes 10-30 seconds."}
+              : redirecting
+              ? "Redirecting you to review your column mappings..."
+              : "Our AI agents are working on your file. This usually takes 10–30 seconds."}
           </p>
         </div>
 
@@ -208,9 +228,9 @@ export default function ProcessingPage() {
         {/* Stage timeline */}
         <div className="space-y-0">
           {STAGES.map((s, i) => {
-            const isActive = i === currentStageIndex && !error;
-            const isDone = i < currentStageIndex;
-            const isFuture = i > currentStageIndex;
+            const isActive = i === currentStageIndex && !error && !redirecting;
+            const isDone = i < currentStageIndex || redirecting;
+            const isFuture = i > currentStageIndex && !redirecting;
 
             return (
               <div key={s.key} className="flex gap-4">
@@ -306,8 +326,8 @@ export default function ProcessingPage() {
           </div>
         )}
 
-        {/* Awaiting review redirect notice */}
-        {stage === "awaiting_review" && !error && (
+        {/* Redirecting notice */}
+        {redirecting && (
           <div className="mt-4 text-center">
             <p className="text-sm text-[#4ADE80] animate-pulse">
               Redirecting to review page...
