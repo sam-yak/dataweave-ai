@@ -149,7 +149,7 @@ export default function ReviewPage() {
         <div className="space-y-3">
           {mappings.map((mapping) => (
             <div
-              key={mapping.id}
+              key={mapping.id || `mapping-${index}`}
               className="rounded-xl p-5 transition-all duration-200"
               style={{
                 border: mapping.status === "approved" || mapping.status === "corrected"
