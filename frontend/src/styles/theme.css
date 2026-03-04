@@ -1,0 +1,113 @@
+/* ── DataWeave Theme Variables ──────────────────────────────
+   Applied via data-theme attribute on <html> element.
+   Light is the default. Dark activates via [data-theme="dark"].
+   ──────────────────────────────────────────────────────────── */
+
+:root,
+[data-theme="light"] {
+  /* Backgrounds */
+  --dw-bg-primary: #FAFAFA;
+  --dw-bg-secondary: #FFFFFF;
+  --dw-bg-tertiary: #F3F4F6;
+  --dw-bg-card: #FFFFFF;
+  --dw-bg-card-hover: #F9FAFB;
+  --dw-bg-input: #FFFFFF;
+  --dw-bg-overlay: rgba(0, 0, 0, 0.4);
+
+  /* Borders */
+  --dw-border: rgba(0, 0, 0, 0.08);
+  --dw-border-strong: rgba(0, 0, 0, 0.15);
+  --dw-border-input: rgba(0, 0, 0, 0.12);
+  --dw-border-input-focus: #E94560;
+
+  /* Text */
+  --dw-text-primary: #111827;
+  --dw-text-secondary: #4B5563;
+  --dw-text-tertiary: #9CA3AF;
+  --dw-text-muted: rgba(0, 0, 0, 0.35);
+  --dw-text-inverse: #FFFFFF;
+
+  /* Brand */
+  --dw-accent: #E94560;
+  --dw-accent-hover: #D63B55;
+  --dw-accent-light: rgba(233, 69, 96, 0.08);
+  --dw-accent-border: rgba(233, 69, 96, 0.2);
+
+  /* Status colors */
+  --dw-success: #16A34A;
+  --dw-success-light: rgba(22, 163, 74, 0.08);
+  --dw-success-border: rgba(22, 163, 74, 0.2);
+  --dw-warning: #D97706;
+  --dw-warning-light: rgba(217, 119, 6, 0.08);
+  --dw-warning-border: rgba(217, 119, 6, 0.2);
+  --dw-error: #DC2626;
+  --dw-error-light: rgba(220, 38, 38, 0.06);
+  --dw-error-border: rgba(220, 38, 38, 0.15);
+  --dw-info: #2563EB;
+  --dw-info-light: rgba(37, 99, 235, 0.06);
+  --dw-info-border: rgba(37, 99, 235, 0.15);
+
+  /* Shadows */
+  --dw-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --dw-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --dw-shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.08);
+  --dw-shadow-card: 0 1px 3px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04);
+
+  /* Misc */
+  --dw-grain-opacity: 0;
+  --dw-glow-opacity: 0;
+}
+
+[data-theme="dark"] {
+  /* Backgrounds */
+  --dw-bg-primary: #0A0A0F;
+  --dw-bg-secondary: #111118;
+  --dw-bg-tertiary: #1A1A24;
+  --dw-bg-card: rgba(255, 255, 255, 0.03);
+  --dw-bg-card-hover: rgba(255, 255, 255, 0.05);
+  --dw-bg-input: rgba(255, 255, 255, 0.05);
+  --dw-bg-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Borders */
+  --dw-border: rgba(255, 255, 255, 0.06);
+  --dw-border-strong: rgba(255, 255, 255, 0.1);
+  --dw-border-input: rgba(255, 255, 255, 0.08);
+  --dw-border-input-focus: #E94560;
+
+  /* Text */
+  --dw-text-primary: #FFFFFF;
+  --dw-text-secondary: rgba(255, 255, 255, 0.6);
+  --dw-text-tertiary: rgba(255, 255, 255, 0.35);
+  --dw-text-muted: rgba(255, 255, 255, 0.2);
+  --dw-text-inverse: #0A0A0F;
+
+  /* Brand */
+  --dw-accent: #E94560;
+  --dw-accent-hover: #FF6B6B;
+  --dw-accent-light: rgba(233, 69, 96, 0.1);
+  --dw-accent-border: rgba(233, 69, 96, 0.25);
+
+  /* Status colors */
+  --dw-success: #4ADE80;
+  --dw-success-light: rgba(74, 222, 128, 0.1);
+  --dw-success-border: rgba(74, 222, 128, 0.25);
+  --dw-warning: #FBBF24;
+  --dw-warning-light: rgba(251, 191, 36, 0.1);
+  --dw-warning-border: rgba(251, 191, 36, 0.25);
+  --dw-error: #F87171;
+  --dw-error-light: rgba(233, 69, 96, 0.1);
+  --dw-error-border: rgba(233, 69, 96, 0.2);
+  --dw-info: #60A5FA;
+  --dw-info-light: rgba(96, 165, 250, 0.1);
+  --dw-info-border: rgba(96, 165, 250, 0.2);
+
+  /* Shadows */
+  --dw-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --dw-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --dw-shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.5);
+  --dw-shadow-card: 0 0 0 1px rgba(255, 255, 255, 0.05);
+
+  /* Misc */
+  --dw-grain-opacity: 0.03;
+  --dw-glow-opacity: 1;
+}
