@@ -86,16 +86,16 @@ DataWeave's intelligence is split across five specialized agents. Each handles a
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                           DataWeave Pipeline                                 │
 │                                                                              │
-│  ┌───────────┐   ┌───────────┐   ┌───────────┐   ┌───────────┐   ┌─────────┐│
-│  │ Ingestion │──▶│  Pattern  │──▶│  Schema   │──▶│ Transform │──▶│Validate ││
-│  │   Agent   │   │   Agent   │   │   Agent   │   │   Agent   │   │  Agent  ││
-│  │           │   │           │   │           │   │           │   │         ││
-│  │  $0.00    │   │  $0.00    │   │ ~$0.01    │   │  $0.00    │   │  $0.00  ││
-│  │  No LLM   │   │  No LLM   │   │ LLM only  │   │  No LLM   │   │  No LLM ││
-│  │           │   │           │   │ for new   │   │           │   │         ││
-│  │ Parse any │   │ Match from│   │ columns   │   │ Normalize │   │ Quality ││
-│  │ file type │   │ memory    │   │           │   │ all data  │   │  gate   ││
-│  └───────────┘   └───────────┘   └───────────┘   └───────────┘   └─────────┘│
+│  ┌───────────┐   ┌───────────┐   ┌───────────┐   ┌───────────┐   ┌─────────┐ │
+│  │ Ingestion │──▶│  Pattern  │──▶│  Schema   │──▶│ Transform │──▶│Validate │ │
+│  │   Agent   │   │   Agent   │   │   Agent   │   │   Agent   │   │  Agent  │ │
+│  │           │   │           │   │           │   │           │   │         │ │
+│  │  $0.00    │   │  $0.00    │   │ ~$0.01    │   │  $0.00    │   │  $0.00  │ │
+│  │  No LLM   │   │  No LLM   │   │ LLM only  │   │  No LLM   │   │  No LLM │ │
+│  │           │   │           │   │ for new   │   │           │   │         │ │
+│  │ Parse any │   │ Match from│   │ columns   │   │ Normalize │   │ Quality │ │
+│  │ file type │   │ memory    │   │           │   │ all data  │   │  gate   │ │
+│  └───────────┘   └───────────┘   └───────────┘   └───────────┘   └─────────┘ │
 │                                                                              │
 │  Total cost per file: ~$0.01 (decreasing toward $0 as patterns learn)        │
 └──────────────────────────────────────────────────────────────────────────────┘
